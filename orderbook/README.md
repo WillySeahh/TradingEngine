@@ -12,7 +12,7 @@ Areas of improvements are listed below.
 ## Architecture
 
 ### Data Structure
-A associative data structure std::map is used because it offers O(1) look up given the key 
+An associative data structure std::map is used because it offers O(1) look up given the key 
 and is naturally sorted allowing us to match orders easily and efficiently. 
 
 There is both ASKs map and BIDs map, when printing the order book it will be from top down with the
