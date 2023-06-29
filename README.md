@@ -1,7 +1,7 @@
 # Trading Engine
 
 This project aims to build to end-to-end high level representation of a trading system, more specifically trading systems
-traditionally used in High Frequency Trading (HFTs) firms. As such latency should always be prioritised. 
+traditionally used in High Frequency Trading (HFTs) firms hence latency should be prioritised. 
 
 Trading Engine is developed in C++ (cpp). 
 
@@ -32,7 +32,7 @@ The OMS gathers orders submitted from the strategy.
 OMS may reject it for various reasons including too large a quantity, erroneous prices or excessive outstanding position.
 
 
-5. Lastly the order is sent to the Egress Gateway to be sent to the respective exchanges. 
+5. Lastly the order is sent to the Egress Gateway to be sent to the respective exchanges.
 
 
 ## Repo Structure
