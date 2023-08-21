@@ -9,3 +9,4 @@ add_executable(TradingEngine main.cpp)
 
 add_subdirectory(orderbook)
 add_subdirectory(ingressGateway)
+add_subdirectory(fixParser)
