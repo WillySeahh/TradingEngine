@@ -2,43 +2,61 @@
 // Created by Willy Seah on 27/6/23.
 //
 #include <iostream>
+#include <chrono>
+#include <sstream>
+#include <memory>
+#include <map>
+#include <fstream>
+#include <filesystem>
+
 #include "OrderBook.hpp"
+
+struct Input {
+    std::string orderId;
+    std::string side;
+    std::string symbol;
+    long quantity;
+    double price;
+};
+
+Input parseInput(const std::string& inputString) {
+    std::istringstream iss(inputString);
+    Input input;
+    iss >> input.orderId >> input.side >> input.symbol >> input.quantity >> input.price;
+    return input;
+}
 
 int main()
 {
-    OrderBook ob;
+    std::map<std::string, std::unique_ptr<OrderBook> > getBookFromSymbol;
+    std::string line;
 
-    ob.add_ask(105,5);
-    ob.add_ask(104, 10);
-    ob.add_ask(104, 20);
+    long time = 0;
 
-    ob.add_bid(100, 100);
-    ob.add_bid(99, 100);
-    ob.add_bid(98, 100);
+    std::ifstream input_file("sample_input.txt");
 
+//    if (std::ifstream("sample_input.txt").good()) {
+//        // File exists, proceed with opening
+//    } else {
+//        std::cout << "File not found: " << "/orderbook/sample_input.txt" << std::endl;
+//    }
 
-    //someone want to buy price 105 amount 3
-    ob.remove_bid(98, 301);
-    //should have ask 105, 3 left
-
-    std::cout << ob;
-
-
-    OrderBook::BidAsk bidAsk = ob.getBidAsk();
-    std::cout << "Highest Bid (if present)" << std::endl;
-    if (bidAsk.bid.has_value()) {
-        std::cout << bidAsk.bid.get().second << std::endl;
-    } else {
-        std::cout << "NIL" << std::endl;
+    while (getline(input_file, line)) {
+    //while (getline(std::cin, line) && line != "exit") {
+        Input parsedInput = parseInput(line);
+        OrderBook* book;
+        if (getBookFromSymbol.find(parsedInput.symbol) == getBookFromSymbol.end()) {
+            getBookFromSymbol[parsedInput.symbol] = std::make_unique<OrderBook>(parsedInput.symbol);
+        }
+        book = getBookFromSymbol[parsedInput.symbol].get();
+        book->add(parsedInput.orderId, parsedInput.side, parsedInput.price, parsedInput.quantity, time);
+        time ++;
     }
-    std::cout << "Lowest Ask Price (if present)" << std::endl;
+    std::cout << std::endl;
 
-    if (bidAsk.ask.has_value()) {
-        std::cout << bidAsk.ask.get().second << std::endl;
-    } else {
-        std::cout << "NIL" << std::endl;
-    }
-
+//    for(const auto& [symbol,book] : getBookFromSymbol) {
+//        book->toStringWithArrivalTime();
+//    }
 
 
     return 0;

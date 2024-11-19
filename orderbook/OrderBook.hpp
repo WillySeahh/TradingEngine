@@ -4,6 +4,7 @@
 #include <map>
 #include <iostream>
 #include <boost/optional.hpp>
+#include "orders.hpp"
 
 #ifndef ORDER_BOOK2_ORDERBOOK_HPP
 #define ORDER_BOOK2_ORDERBOOK_HPP
@@ -12,31 +13,171 @@ class OrderBook {
 
 public:
 
-    struct BidAsk {
-        typedef boost::optional<std::pair<int,int>> Entry; //use optional because bid ask map may be empty
-        Entry bid, ask;
+    void add(std::string orderId, std::string side, double price, long quantity, long timestamp);
 
-        boost::optional<int> spread();
-    };
-
-
-    bool isEmpty();
-
-    void add_bid(int price, int amount);
-    void add_ask(int price, int amount);
-
-    void remove_bid(int price, int amount);
-    void remove_ask(int price, int amount);
-
-    BidAsk getBidAsk();
-
-    friend std::ostream& operator<<(std::ostream& os, OrderBook&);
+    explicit OrderBook(const std::string& symbol): symbol(symbol){};
 
 
 private:
-    std::map<int, int> bids, asks;
-    void add(int price, int amount, bool bid);
-    void remove(int price, int amount, bool bid);
+    std::string symbol;
+    OrdersAtPrice *bidsByPrice = nullptr;
+    OrdersAtPrice *asksByPrice = nullptr;
+
+    OrdersAtPriceHashMap ordersAtPriceHashMap;
+
+private:
+
+    OrdersAtPrice* getOrdersAtPrice(double price) {
+        return ordersAtPriceHashMap[price];
+    }
+
+    void addOrdersAtPrice(OrdersAtPrice *newOrderAtPrice) {
+
+        // Place in hashmap
+        ordersAtPriceHashMap[newOrderAtPrice->price] = newOrderAtPrice;
+
+        OrdersAtPrice* bestOrdersByPrice = (newOrderAtPrice->side == "BUY" ? bidsByPrice : asksByPrice);
+
+        if (!bestOrdersByPrice) {
+            // this side (buy/sell) do not have any orders, no price. meaning the incoming newOrderAtPrice is the best
+            if (newOrderAtPrice->side == "BUY") {
+                bidsByPrice = newOrderAtPrice;
+            } else {
+                asksByPrice = newOrderAtPrice;
+            }
+            // Remember OrdersAtPrice is a double linked list, and the SELL and BUY is not linked together
+            newOrderAtPrice->nextEntry = newOrderAtPrice->prevEntry = newOrderAtPrice;
+        } else {
+
+            OrdersAtPrice* target = bestOrdersByPrice;
+
+            //If newOrder is SELL, is it higher than lowest sell
+            //If is BUY, is it lower than highest buy
+            //if this is false meaning this is the lowest sell or highest buy
+            bool addAfter = (
+                    (newOrderAtPrice->side == "SELL" && newOrderAtPrice->price > target->price) ||
+                    (newOrderAtPrice->side == "BUY" && newOrderAtPrice->price < target->price)
+                    );
+
+            //It is not the best bid/ask. is it the second?
+            //we need to check another time to allow for the while loop below to work
+            if (addAfter) {
+                target = target->nextEntry;
+                addAfter = (
+                        (newOrderAtPrice->side == "SELL" && newOrderAtPrice->price > target->price) ||
+                        (newOrderAtPrice->side == "BUY" && newOrderAtPrice->price < target->price)
+                );
+                if (addAfter) {
+                    target = target->nextEntry;
+                }
+            }
+
+            while(addAfter && target != bestOrdersByPrice) {
+                addAfter = (
+                        (newOrderAtPrice->side == "SELL" && newOrderAtPrice->price > target->price) ||
+                        (newOrderAtPrice->side == "BUY" && newOrderAtPrice->price < target->price)
+                );
+                if (addAfter) {
+                    target = target->nextEntry;
+                }
+            }
+
+            if (addAfter) {
+                if (target == bestOrdersByPrice) {
+                    //the new order is the worse buy or worse sell
+                    target = bestOrdersByPrice->prevEntry;
+                }
+                newOrderAtPrice->prevEntry = target;
+                target->nextEntry->prevEntry = newOrderAtPrice;
+                newOrderAtPrice->nextEntry = target->nextEntry;
+                target->nextEntry = newOrderAtPrice;
+            } else {
+
+                newOrderAtPrice->prevEntry = target->prevEntry;
+                newOrderAtPrice->nextEntry = target;
+                target->prevEntry->nextEntry = newOrderAtPrice;
+                target->prevEntry = newOrderAtPrice;
+
+                if ((newOrderAtPrice->side == "BUY" && newOrderAtPrice->price > bestOrdersByPrice->price) ||
+                    (newOrderAtPrice->side == "SELL" && newOrderAtPrice->price < bestOrdersByPrice->price)) {
+                    //found a new best order price on buy or sell side
+
+                    // Handle edge case
+                    // when new price for BUY is highest, and the previous highest only has 1 price at that BUY
+                    //previous highest, next is pointing to itself, which is wrong, need to point to bestOrdersByPrice
+                    target->nextEntry = (target->nextEntry == bestOrdersByPrice ? newOrderAtPrice : target->nextEntry);
+
+                    (newOrderAtPrice->side == "BUY" ? bidsByPrice : asksByPrice) = newOrderAtPrice;
+                }
+            }
+        }
+    }
+
+    void removeOrdersAtPrice(const std::string& side, double price) {
+        OrdersAtPrice* bestOrdersByPrice = (side == "BUY" ? bidsByPrice : asksByPrice);
+
+        OrdersAtPrice* ordersAtPrice = getOrdersAtPrice(price);
+
+        if (ordersAtPrice->nextEntry == ordersAtPrice) {
+            // only 1 price at the side
+            (side == "BUY" ? bidsByPrice : asksByPrice) = nullptr;
+        } else {
+            ordersAtPrice->prevEntry->nextEntry = ordersAtPrice->nextEntry;
+            ordersAtPrice->nextEntry->prevEntry = ordersAtPrice->prevEntry;
+
+            if (ordersAtPrice == bestOrdersByPrice) {
+                //shift the best ask and bids
+                (side == "BUY" ? bidsByPrice : asksByPrice) = ordersAtPrice->nextEntry;
+            }
+            ordersAtPrice->prevEntry = ordersAtPrice->nextEntry = nullptr;
+        }
+        ordersAtPriceHashMap.erase(price);
+    }
+
+    void match(std::string side, Order* bidItr, long* leavesQty, const std::string& clientOrderId);
+
+    long checkForMatch(const std::string& clientOrderId, const std::string& side, double price, long qty);
+
+    void removeOrder(Order *order) {
+        OrdersAtPrice* ordersAtPrice = getOrdersAtPrice(order->price);
+
+        if (order->prevOrder == order) {
+            //only 1 order at that price
+            removeOrdersAtPrice(order->side, order->price);
+        } else {
+            auto orderBefore = order->prevOrder;
+            auto orderAfter = order->nextOrder;
+
+            orderBefore->nextOrder = orderAfter;
+            orderAfter->prevOrder = orderBefore;
+
+            if (ordersAtPrice->firstOrder == order) {
+                ordersAtPrice->firstOrder = orderAfter;
+            }
+        }
+        order->prevOrder = order->nextOrder = nullptr;
+    }
+
+    void addOrder(Order *order) {
+        OrdersAtPrice* ordersAtPrice = getOrdersAtPrice(order->price);
+
+        if (!ordersAtPrice) {
+            order->nextOrder = order->prevOrder = order;
+
+            OrdersAtPrice* newOrdersAtPrice = new OrdersAtPrice(order->side, order->price, order, nullptr, nullptr);
+            addOrdersAtPrice(newOrdersAtPrice);
+        } else {
+            Order* firstOrder = ordersAtPrice->firstOrder; // get first order of this price
+
+            //the latest order that joins this queue should be at the back.
+            firstOrder->prevOrder->nextOrder = order;
+            order->prevOrder = firstOrder->prevOrder;
+            order->nextOrder = firstOrder;
+            firstOrder->prevOrder = order;
+        }
+    }
+
+
 
 };
 

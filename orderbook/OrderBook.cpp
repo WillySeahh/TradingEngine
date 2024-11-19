@@ -6,183 +6,56 @@
 #include <iostream>
 
 
-bool OrderBook::isEmpty(){
-    return bids.empty() && asks.empty();
-}
+void OrderBook::match(std::string side, Order* itr, long* leavesQty, const std::string& clientOrderId) {
 
-void OrderBook::add_bid(int price, int amount) {
-    add(price, amount, true);
-}
+    Order* order = itr; //the order that is being matched, meaning should decrease in quantity.
+    long orderQuantity = order->quantity;
+    long fillQuantity = std::min(*leavesQty, orderQuantity);
 
-void OrderBook::add_ask(int price, int amount) {
-    add(price, amount, false);
-}
-
-void OrderBook::remove_bid(int price, int amount) {
-    remove(price, amount, true);
-}
-
-void OrderBook::remove_ask(int price, int amount) {
-    remove(price, amount, false);
-}
-
-
-
-void OrderBook::add(int price, int amount, bool bid) {
-
-    if (bid) {
-        //this is bid map, how much buyer want to buy for
-        bids[price] += amount;
-    } else {
-        //this is seller want to sell more
-        asks[price] += amount;
+    *(leavesQty) -= fillQuantity;
+    order->quantity -= fillQuantity;
+    std::cout << "TRADE " << symbol << " " << clientOrderId << " " <<  itr->clientOrderId << " " << fillQuantity << " " << itr->price << std::endl;
+    if (order->quantity == 0) {
+        removeOrder(order); // existing order is completely matched
     }
 }
 
+long OrderBook::checkForMatch(const std::string& clientOrderId, const std::string& side, double price, long qty) {
 
-void OrderBook::remove(int price, int amount, bool bid) {
+    //parameters here is referring to what is just submitted, if just submitted BUY, side parameter is side
+    long leavesQuantity = qty;
 
-    //TIP: need to get reference to table.
-  //  std::map<int,int>&table = bid? bids : asks;
-
-    if (bid) {
-        //this is remove bid. means someone want to sell
-        //we should remove the highest bid first
-        auto it = bids.rbegin();
-
-        while (it != bids.rend()) {
-
-            if (it->first >= price) {
-                //can remove bid since bid price is  >= price
-
-                if (it->second >= amount) {
-                    //this bid can fulfil the entire order
-                    it->second -= amount;
-                    if (it->second == 0) {
-                        bids.erase(it->first); //remove the key
-                    }
-                    return; //order already fulfilled
-                } else {
-                    //this bid cannot fulfil order
-
-                    amount -= it->second;
-
-                    it->second = 0;
-                    if (it->second == 0) {
-                        bids.erase(it->first); //remove the key
-                    }
-                    //TIP: after erase key dont need to it++;
-                    continue;
-                }
-
-            } else {
-                //this sell order is not entirely fulfilled
-                add_ask(price, amount);
-                return;
+    if (side == "BUY") { //newest order is buying = BID, need to see if it can match with ASKS
+        while (leavesQuantity && asksByPrice) {
+            const auto bestAskIter = asksByPrice->firstOrder;
+            if (price < bestAskIter->price) { //my buying price must at least be >= selling price, else break
+                break;
             }
+            match(side, bestAskIter, &leavesQuantity, clientOrderId);
         }
+    }
 
-        if (amount > 0) {
-            add_ask(price, amount);
-        }
-
-
-    } else {
-        //this is remove sell. means someone want to buy
-        //we should sell the cheapest one to him first
-
-        auto it = asks.begin();
-
-        while (it != asks.end()) {
-
-            std::cout << it->first << std::endl;
-
-            if (it->first <= price) {
-                //this person buying price is more than or equal to
-                //the current ASK
-
-                if (it->second >= amount) {
-                    //this current ASK can fulfil entire buy order
-                    it->second -= amount;
-                    if (it->second == 0) {
-                        asks.erase(it->first);
-                    }
-                    return; //order is fulfilled
-
-                } else {
-                    //this current ask cannot fulfil entire buy order
-
-                    amount = amount - it->second;
-
-                    it->second = 0;
-
-                    if (it->second == 0) {
-                       asks.erase(it++); //remove the key
-                    }
-
-                    continue;
-                }
-
-
-            } else {
-                //the cheapest ASK price is more than what this buyer is buying for
-                //cannot buy anything so add to bid
-                add_bid(price, amount);
-                return;
+    if (side == "SELL") { //newest order is selling = ASKS, need to see if it can match with BIDS
+        while (leavesQuantity && bidsByPrice) {
+            const auto bestBidIter = bidsByPrice->firstOrder;
+            if (price > bestBidIter->price) { //my selling price must be <= what people are buying for, else break
+                break;
             }
-        }
-
-        if (amount > 0) {
-            add_bid(price, amount);
-            return;
+            match(side, bestBidIter, &leavesQuantity, clientOrderId);
         }
     }
+
+    return leavesQuantity;
 }
 
+void OrderBook::add(std::string clientOrderId, std::string side, double price, long quantity, long timestamp) {
+    long leavesQuantity = checkForMatch(clientOrderId, side, price, quantity);
 
-
-
-
-std::ostream& operator<<(std::ostream &os, OrderBook &book) {
-
-    if (book.isEmpty()) {
-        os << "Order book empty";
-        return os;
+    if (leavesQuantity > 0) {
+        Order* order = new Order(clientOrderId, price, leavesQuantity, side, nullptr, nullptr, timestamp);
+        //this client has more orders now
+        addOrder(order);
     }
-    //want to print the orderbook from highest price to lowest
-    os << "Start of Order Book, highest price to lowest" << std::endl;
-    os << "Starting with ASKS" << std::endl;
-    for(auto it = book.asks.rbegin(); it != book.asks.rend(); ++it) {
-        os << "Price is: " << it->first << "\t" << "Amount is: " << it->second << std::endl;
-    }
-    os << std::endl;
-    os << "Spread between lowest ask and highest bid" << std::endl;
-    os << std::endl;
-
-    os << "Starting with BIDS" << std::endl;
-
-    for(auto it = book.bids.rbegin(); it != book.bids.rend(); ++it) {
-        os << "Price is: " << it->first << "\t" << "Amount is: " << it->second << std::endl;
-    }
-
-    os << "End of Order Book" << std::endl << std::endl;
-    return os;
-
-}
-
-OrderBook::BidAsk OrderBook::getBidAsk() {
-    BidAsk result;
-
-    auto best_bid = bids.rbegin();
-    if (best_bid != bids.rend()) {
-        result.bid = *best_bid;
-    }
-
-    auto best_ask = asks.begin();
-    if (best_ask != asks.end()) {
-        result.ask = *best_ask;
-    }
-    return result;
 }
 
 
