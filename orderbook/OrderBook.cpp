@@ -5,8 +5,8 @@
 #include "OrderBook.hpp"
 #include <iostream>
 
-
-void OrderBook::match(std::string side, Order* itr, long* leavesQty, const std::string& clientOrderId) {
+// Whenever use string as parameter, should use pass by reference.
+void OrderBook::match(const std::string& side, Order* itr, long* leavesQty, const std::string& clientOrderId) {
 
     Order* order = itr; //the order that is being matched, meaning should decrease in quantity.
     long orderQuantity = order->quantity;
@@ -22,16 +22,17 @@ void OrderBook::match(std::string side, Order* itr, long* leavesQty, const std::
 
 long OrderBook::checkForMatch(const std::string& clientOrderId, const std::string& side, double price, long qty) {
 
-    //parameters here is referring to what is just submitted, if just submitted BUY, side parameter is side
+    //parameters here is referring to what is just submitted, if just submitted BUY, side parameter is BUY
     long leavesQuantity = qty;
 
     if (side == "BUY") { //newest order is buying = BID, need to see if it can match with ASKS
         while (leavesQuantity && asksByPrice) {
+            // Ensure that if OrdersByPrice is not null, there is a firstOrder with price.
             const auto bestAskIter = asksByPrice->firstOrder;
             if (price < bestAskIter->price) { //my buying price must at least be >= selling price, else break
                 break;
             }
-            match(side, bestAskIter, &leavesQuantity, clientOrderId);
+            match(side, bestAskIter, &leavesQuantity, clientOrderId); // most important to pass this as reference
         }
     }
 
@@ -41,14 +42,14 @@ long OrderBook::checkForMatch(const std::string& clientOrderId, const std::strin
             if (price > bestBidIter->price) { //my selling price must be <= what people are buying for, else break
                 break;
             }
-            match(side, bestBidIter, &leavesQuantity, clientOrderId);
+            match(side, bestBidIter, &leavesQuantity, clientOrderId); // most important to pass this as reference
         }
     }
 
     return leavesQuantity;
 }
 
-void OrderBook::add(std::string clientOrderId, std::string side, double price, long quantity, long timestamp) {
+void OrderBook::add(const std::string& clientOrderId, const std::string& side, double price, long quantity, long timestamp) {
     long leavesQuantity = checkForMatch(clientOrderId, side, price, quantity);
 
     if (leavesQuantity > 0) {
