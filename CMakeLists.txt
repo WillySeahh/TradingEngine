@@ -12,4 +12,5 @@ add_subdirectory(ingressGateway)
 add_subdirectory(fixParser)
 add_subdirectory(utils)
 add_subdirectory(marketDataConsumer)
+add_subdirectory(orderbookv2)
 
