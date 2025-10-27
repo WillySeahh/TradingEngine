@@ -76,7 +76,12 @@ std::pair<int,double> Orderbook::fill_order(map<double, vector<unique_ptr<Order>
                                             const OrderType type, const Side side, int& order_quantity,
                                             const double price, int& units_transacted, double& total_value){
     // Iterate through bids/asks map
+    // bid is from lowest to highest, ask is from highest to lowest
+    // when matching order should go from bid highest and ask lowest so aka is reversed, so the rbegin, rend
     for(auto rit = offers.rbegin(); rit != offers.rend();) {
+
+        if (order_quantity == 0) break;
+
         //auto& pair = *rit; // Dereference iterator to get the key-value pair
         const std::pair<const double&, std::vector<std::unique_ptr<Order>>&> &pair = *rit;
 
@@ -98,7 +103,7 @@ std::pair<int,double> Orderbook::fill_order(map<double, vector<unique_ptr<Order>
             // we have order_quantity, iterate quote at this price level and fill it
             auto it = quotes.begin();
             while(it != quotes.end() && order_quantity > 0) {
-                int& cur_quote_qty = (*it)->quantity; // COPY
+                int& cur_quote_qty = (*it)->quantity; // refers to the actual one.
                 const double cur_quote_price = (*it)->price;
 
                 // [ENHANCED added this instead of if-else case below]
@@ -118,9 +123,9 @@ std::pair<int,double> Orderbook::fill_order(map<double, vector<unique_ptr<Order>
             if (quotes.empty()) {
                 //this price have no more orders
                 offers.erase(price_level);
-                //after erasing i dont have to increement
+                //after erasing i dont have to increment
             } else {
-                rit++;
+                rit++; // if it reaches here it means i still have orders at this price level and incoming order did not clear all, so next iteration will break
             }
 
         } else {
@@ -154,13 +159,13 @@ std::pair<int,double> Orderbook::handle_order(OrderType type, int order_quantity
         return fill;
     } else if(type == OrderType::limit) {
         // Analytics
-        int units_transacted = 0;
-        double total_value = 0;
+        //int units_transacted = 0;
+        //double total_value = 0;
 
         if (side==Side::buy){
             if (best_quote(BookSide::ask) <= price){
                 // Can at least partially fill
-                tuple<int, double> fill = Orderbook::fill_order(m_asks, OrderType::limit, Side::buy, order_quantity, price, units_transacted, total_value);
+                pair<int, double> fill = Orderbook::fill_order(m_asks, OrderType::limit, Side::buy, order_quantity, price, units_transacted, total_value);
                 // Add remaining order to book
                 add_order(order_quantity, price, BookSide::bid);
                 return fill;
@@ -173,7 +178,7 @@ std::pair<int,double> Orderbook::handle_order(OrderType type, int order_quantity
         }else{
             if (best_quote(BookSide::bid) >= price){
                 // Can at least partially fill
-                tuple<int, double> fill= Orderbook::fill_order(m_bids, OrderType::limit, Side::sell, order_quantity, price, units_transacted, total_value);
+                pair<int, double> fill= Orderbook::fill_order(m_bids, OrderType::limit, Side::sell, order_quantity, price, units_transacted, total_value);
                 // Add remaining order to book
                 add_order(order_quantity, price, BookSide::ask);
                 return fill;

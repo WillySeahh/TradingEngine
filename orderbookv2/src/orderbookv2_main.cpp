@@ -34,7 +34,7 @@ int main(){
 
             cout << "Enter order type:\n0. Market order\n1. Limit order\nSelection: ";
             cin >> order_type_input;
-            OrderType order_type = static_cast<OrderType>(order_type_input);
+            OrderType order_type = static_cast<OrderType>(order_type_input); //converts 1 type to another type
 
             cout << "\nEnter side:\n0. Buy\n1. Sell\nSelection: ";
             cin >> side_input;
